@@ -52,7 +52,7 @@ def count_lemmas(lemmas):
     return wordcount
 
 def lemmas_and_wordcount_per_book(book):
-    tree = ET.parse(f'Diorisis/Homer (0012) - {book} (00{BOOKNR[book]}).xml')
+    tree = ET.parse(f'Homer (0012) - {book} (00{BOOKNR[book]}).xml')
     lemmas = get_lemmas_from_xml(tree)
     try:
         with open(f'{book}_wc.pickle', 'rb') as infile:
@@ -64,7 +64,7 @@ def lemmas_and_wordcount_per_book(book):
     return lemmas, wc
 
 
-def count_occurences_of_mind_words(book):
+def count_occurences_of_mind_words(book, normalize=False):
     _, wc = lemmas_and_wordcount_per_book(book)
     tot = sum(wc.values())
     print(f"number of distinct lemmata in {book}: {tot}")
@@ -80,9 +80,12 @@ def count_occurences_of_mind_words(book):
     occ_tot = sum(occs.values())
     print(f"All mind-related words occur {occ_tot} times in {book}. normalized: {occ_tot/tot*100000:.2f}/100000 words")
     print("--"*10)
-    return occs
+    if normalize:
+        return {mw:occs[mw]/tot*100000 for mw in occs}
+    else:
+        return occs
 
-def analyse_embedding_of_mind_words(book):
+def analyse_embedding_of_mind_words(book, n_top_coocs=10):
     lemmas, wc = lemmas_and_wordcount_per_book(book)
     surroundings = get_surroundings_of_mind_words(lemmas, pos="verb")
     cooccurences = defaultdict(int)
@@ -92,26 +95,28 @@ def analyse_embedding_of_mind_words(book):
                 cooccurences[(key, word["entry"])] += 1
     pmi_index = pmi(wc, cooccurences)
     ranked = sorted(pmi_index.items(), reverse=True, key=lambda x:x[1])
-    n=10
+    ranked_per_word={}
     for mindword in MINDWORDS:
-        print(f"These are the {n} most correlated words with the mindword {mindword} in the {book}")
+        ranked_per_word[mindword]=[]
+        print(f"These are the {n_top_coocs} most correlated words with the mindword {mindword} in the {book}")
         i=0
         for top in ranked:
             if top[0][0]==mindword:
-                i+=1
-                print(f"{i}.: {top[0][1]}, pmi: {top[1]:.2f}")
-            if i>=n:
-                break
+                if i<=n_top_coocs:
+                    i+=1
+                    print(f"{i}.: {top[0][1]}, pmi: {top[1]:.2f}")
+                ranked_per_word[mindword].append((top[0][1], top[1]))
         print("-"*20)
-    return ranked
+    return ranked_per_word
 
 def pmi(words_freqs, pair_freqs):
     pmis = {}
+    tot = sum(words_freqs.values())
     for pair in pair_freqs:
-        P_a = words_freqs[pair[0]]
-        P_b = words_freqs[pair[1]]
+        P_a = words_freqs[pair[0]]/tot
+        P_b = words_freqs[pair[1]]/tot
         P_ab = pair_freqs[pair]
-        pmi = math.log(P_ab/P_a*P_b, 2)
+        pmi = math.log(P_ab/(P_a*P_b), 2)
         pmis[pair] = pmi
     return pmis
 
@@ -136,7 +141,7 @@ def get_surroundings_of_mind_words(sents, pos=None):
     return mindwords_with_surroundings
 
 def morpho_frequencies_of_mindwords(book):
-    tree = ET.parse(f'Diorisis/Homer (0012) - {book} (00{BOOKNR[book]}).xml')
+    tree = ET.parse(f'Homer (0012) - {book} (00{BOOKNR[book]}).xml')
     lemmas = get_lemmas_from_xml(tree)
     morphocount = defaultdict(lambda: defaultdict(int))
     for s in lemmas:
