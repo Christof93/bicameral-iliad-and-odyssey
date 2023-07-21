@@ -85,7 +85,7 @@ def count_occurences_of_mind_words(book, normalize=False):
     else:
         return occs
 
-def analyse_embedding_of_mind_words(book, n_top_coocs=10):
+def analyse_embedding_of_mind_words(book):
     lemmas, wc = lemmas_and_wordcount_per_book(book)
     surroundings = get_surroundings_of_mind_words(lemmas, pos="verb")
     cooccurences = defaultdict(int)
@@ -93,33 +93,56 @@ def analyse_embedding_of_mind_words(book, n_top_coocs=10):
         for sent in surroundings[key]:
             for word in sent:
                 cooccurences[(key, word["entry"])] += 1
-    pmi_index = pmi(wc, cooccurences)
+    pmi_index = pmi(wc, cooccurences, k=2)
     ranked = sorted(pmi_index.items(), reverse=True, key=lambda x:x[1])
     ranked_per_word={}
     for mindword in MINDWORDS:
         ranked_per_word[mindword]=[]
-        print(f"These are the {n_top_coocs} most correlated words with the mindword {mindword} in the {book}")
-        i=0
         for top in ranked:
             if top[0][0]==mindword:
-                if i<=n_top_coocs:
-                    i+=1
-                    print(f"{i}.: {top[0][1]}, pmi: {top[1]:.2f}")
                 ranked_per_word[mindword].append((top[0][1], top[1]))
-        print("-"*20)
-    return ranked_per_word
+    return ranked_per_word, cooccurences, wc
 
-def pmi(words_freqs, pair_freqs):
+def compare_mindword_embeddings(
+        ranked_mindwords_odyssey,
+        ranked_mindwords_iliad,
+        cooccurences_odyssey,
+        cooccurences_iliad, 
+        wc_odyssey,
+        wc_iliad,
+        n_top_coocs=10
+    ):
+    for mindword in MINDWORDS:
+        titlestr = f"| These are the {n_top_coocs} most correlated verbs with the mindword {mindword} in Iliad and Odyssey |"
+        print(f'+{"-"*(len(titlestr)-2)}+')
+        print(titlestr)
+        print(f'+{"-"*(len(titlestr)-2)}+')
+        print(f"Odyssey".ljust(60), "Iliad")
+        print("-"*120)
+        for i, (otop, itop) in enumerate(zip(ranked_mindwords_odyssey[mindword][:n_top_coocs], ranked_mindwords_iliad[mindword][:n_top_coocs])):
+            print(
+                f"{i+1}.: {otop[0]}".ljust(20), 
+                f"pmi: {otop[1]:.2f}".ljust(15),
+                f"c(a,b) {cooccurences_odyssey[(mindword, otop[0])]}".ljust(10),
+                f"c(b) {wc_odyssey[otop[0]]}".ljust(10),
+                f"{i+1}.: {itop[0]}".ljust(20), 
+                f"pmi: {itop[1]:.2f}".ljust(15),
+                f"c(a,b) {cooccurences_iliad[(mindword, itop[0])]}".ljust(10),
+                f"c(b) {wc_iliad[itop[0]]}",
+            )
+        print("-"*120)
+
+def pmi(words_freqs, pair_freqs, k=1):
     pmis = {}
     tot = sum(words_freqs.values())
+    tot_pairs = sum(pair_freqs.values())
     for pair in pair_freqs:
         P_a = words_freqs[pair[0]]/tot
         P_b = words_freqs[pair[1]]/tot
-        P_ab = pair_freqs[pair]
-        pmi = math.log(P_ab/(P_a*P_b), 2)
+        P_ab = pair_freqs[pair]/tot_pairs
+        pmi = math.log(P_ab**k/(P_a*P_b), 2)
         pmis[pair] = pmi
     return pmis
-
 
 def get_surroundings_of_mind_words(sents, pos=None):
     mindwords_with_surroundings = defaultdict(list)
@@ -161,10 +184,11 @@ def morpho_frequencies_of_mindwords(book):
 def main():
     # mind_words_in_iliad = count_occurences_of_mind_words("Iliad")
     # mind_words_in_odyssey = count_occurences_of_mind_words("Odyssey")
-    # cooccurring_verbs_iliad = analyse_embedding_of_mind_words("Iliad")
-    # cooccuring_verbs_odyssey = analyse_embedding_of_mind_words("Odyssey")
-    morphos_mindword_iliad = morpho_frequencies_of_mindwords("Iliad")
-    morphos_mindword_odyssey = morpho_frequencies_of_mindwords("Odyssey")
+    cooccurring_verbs_iliad, p_ab_iliad, p_b_iliad = analyse_embedding_of_mind_words("Iliad")
+    cooccurring_verbs_odyssey, p_ab_odyssey, p_b_odyssey = analyse_embedding_of_mind_words("Odyssey")
+    compare_mindword_embeddings(cooccurring_verbs_odyssey, cooccurring_verbs_iliad, p_ab_odyssey, p_ab_iliad, p_b_odyssey, p_b_iliad)
+    # morphos_mindword_iliad = morpho_frequencies_of_mindwords("Iliad")
+    # morphos_mindword_odyssey = morpho_frequencies_of_mindwords("Odyssey")
 
 if __name__=="__main__":
     main()
